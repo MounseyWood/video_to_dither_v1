@@ -529,6 +529,12 @@
     async function processVideo() {
       if (isProcessing || !sourceVideo) return;
       
+      // Check if MediaRecorder is supported
+      if (typeof MediaRecorder === 'undefined') {
+        alert('Your browser does not support the MediaRecorder API. Please try a different browser.');
+        return;
+      }
+      
       isProcessing = true;
       processBtn.disabled = true;
       downloadBtn.disabled = true;
@@ -559,8 +565,28 @@
       
       // Create MediaRecorder to capture frames
       const stream = outputCanvas.captureStream(framerate);
+      
+      // Try different MIME types in order of preference
+      const mimeTypes = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4',
+        ''  // Empty string lets browser choose
+      ];
+      
+      // Find the first supported MIME type
+      let supportedMimeType = '';
+      for (const type of mimeTypes) {
+        if (type === '' || MediaRecorder.isTypeSupported(type)) {
+          supportedMimeType = type;
+          break;
+        }
+      }
+      
+      // Create MediaRecorder with supported type
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'video/webm;codecs=vp9',
+        mimeType: supportedMimeType,
         videoBitsPerSecond: 2500000
       });
       
@@ -571,11 +597,21 @@
       
       mediaRecorder.onstop = function() {
         // Combine all chunks into a single blob
-        processedVideoBlob = new Blob(chunks, { type: 'video/webm' });
+        const blobType = supportedMimeType ? supportedMimeType.split(';')[0] : 'video/webm';
+        processedVideoBlob = new Blob(chunks, { type: blobType });
         processedVideo.src = URL.createObjectURL(processedVideoBlob);
         
         // Enable download button
         downloadBtn.disabled = false;
+        isProcessing = false;
+        processingMessage.style.display = 'none';
+        progressContainer.style.display = 'none';
+        processBtn.disabled = false;
+      };
+      
+      mediaRecorder.onerror = function(event) {
+        console.error('MediaRecorder error:', event);
+        alert('Error recording video. Your browser might not support the required features.');
         isProcessing = false;
         processingMessage.style.display = 'none';
         progressContainer.style.display = 'none';
@@ -828,10 +864,16 @@
     function downloadVideo() {
       if (!processedVideoBlob) return;
       
+      // Determine appropriate extension based on blob type
+      let fileExtension = 'webm';
+      if (processedVideoBlob.type.includes('mp4')) {
+        fileExtension = 'mp4';
+      }
+      
       const url = URL.createObjectURL(processedVideoBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'dithered-video.webm';
+      a.download = `dithered-video.${fileExtension}`;
       a.click();
       
       // Clean up
