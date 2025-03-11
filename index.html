@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Dithering App</title>
+  <style>
+    :root {
+      --primary: #4a6fa5;
+      --primary-light: #6e8eb8;
+      --secondary: #6b6b6b;
+      --dark: #252a34;
+      --light: #eaeaea;
+      --success: #4caf50;
+      --info: #2196f3;
+      --warning: #ff9800;
+      --danger: #f44336;
+      --border-radius: 8px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f5f5;
+      color: var(--dark);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background-color: var(--primary);
+      color: white;
+      padding: 1.5rem 0;
+      text-align: center;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+      flex-grow: 1;
+    }
+
+    .app-title {
+      margin-bottom: 0.5rem;
+    }
+
+    .app-subtitle {
+      font-weight: normal;
+      opacity: 0.8;
+    }
+
+    .upload-container {
+      background-color: white;
+      border-radius: var(--border-radius);
+      padding: 2rem;
+      text-align: center;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      transition: all 0.3s ease;
+    }
+
+    .upload-container.processing {
+      opacity: 0.7;
+      pointer-events: none;
+    }
+
+    .upload-icon {
+      font-size: 3rem;
+      color: var(--primary);
+      margin-bottom: 1rem;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .upload-btn {
+      display: inline-block;
+      background-color: var(--primary);
+      color: white;
+      padding: 0.75rem 2rem;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      font-weight: bold;
+      border: none;
+      transition: background-color 0.3s;
+    }
+
+    .upload-btn:hover {
+      background-color: var(--primary-light);
+    }
+
+    .video-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .video-wrapper {
+      flex: 1;
+      min-width: 300px;
+      background-color: white;
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    }
+
+    .video-wrapper h3 {
+      padding: 1rem;
+      background-color: var(--primary);
+      color: white;
+      text-align: center;
+    }
+
+    .video-wrapper video {
+      width: 100%;
+      display: block;
+      background-color: #000;
+    }
+
+    .controls-container {
+      background-color: white;
+      border-radius: var(--border-radius);
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    }
+
+    .controls-title {
+      margin-bottom: 1.5rem;
+      text-align: center;
+      color: var(--primary);
+    }
+
+    .control-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .control-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .control-label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: bold;
+    }
+
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .slider {
+      flex-grow: 1;
+      height: 8px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: #d3d3d3;
+      border-radius: 5px;
+      outline: none;
+    }
+
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--primary);
+      cursor: pointer;
+    }
+
+    .slider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--primary);
+      cursor: pointer;
+    }
+
+    .slider-value {
+      min-width: 40px;
+      padding: 0.25rem 0.5rem;
+      background-color: var(--primary);
+      color: white;
+      border-radius: 4px;
+      text-align: center;
+    }
+
+    .dither-method {
+      width: 100%;
+      padding: 0.75rem;
+      border-radius: var(--border-radius);
+      border: 1px solid #ddd;
+      font-size: 1rem;
+    }
+
+    .button-container {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    .btn {
+      padding: 0.75rem 2rem;
+      border-radius: var(--border-radius);
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+      transition: opacity 0.3s;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-process {
+      background-color: var(--info);
+      color: white;
+    }
+
+    .btn-download {
+      background-color: var(--success);
+      color: white;
+    }
+
+    .processing-message {
+      display: none;
+      text-align: center;
+      padding: 1rem;
+      margin-bottom: 2rem;
+      background-color: var(--info);
+      color: white;
+      border-radius: var(--border-radius);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+
+    .footer {
+      background-color: var(--primary);
+      color: white;
+      text-align: center;
+      padding: 1rem 0;
+      margin-top: auto;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .container {
+        padding: 1rem;
+      }
+      
+      .video-container {
+        flex-direction: column;
+      }
+      
+      .video-wrapper {
+        min-width: 100%;
+      }
+      
+      .button-container {
+        flex-direction: column;
+      }
+      
+      .btn {
+        width: 100%;
+      }
+    }
+
+    /* Progress bar */
+    .progress-container {
+      width: 100%;
+      margin-top: 2rem;
+      display: none;
+    }
+
+    .progress-bar {
+      height: 10px;
+      background-color: #e0e0e0;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background-color: var(--primary);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .progress-text {
+      text-align: center;
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+      color: var(--secondary);
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1 class="app-title">Video Dithering App</h1>
+    <p class="app-subtitle">Convert your videos to stylish black and white dithered versions</p>
+  </header>
+
+  <main class="container">
+    <section class="upload-container" id="uploadContainer">
+      <div class="upload-icon">📁</div>
+      <h2>Upload Your Video</h2>
+      <p>Select a video file to begin the dithering process</p>
+      <br>
+      <input type="file" id="videoInput" class="file-input" accept="video/*">
+      <label for="videoInput" class="upload-btn">Choose Video</label>
+    </section>
+
+    <div class="processing-message" id="processingMessage">
+      <h3>Processing Video...</h3>
+      <p>This may take a few moments depending on the video size</p>
+    </div>
+
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="progress-text" id="progressText">Processing: 0%</div>
+    </div>
+
+    <section class="video-container hidden" id="videoContainer">
+      <div class="video-wrapper">
+        <h3>Original Video</h3>
+        <video id="originalVideo" controls></video>
+      </div>
+
+      <div class="video-wrapper">
+        <h3>Dithered Video</h3>
+        <video id="processedVideo" controls></video>
+      </div>
+    </section>
+
+    <section class="controls-container hidden" id="controlsContainer">
+      <h2 class="controls-title">Dithering Controls</h2>
+
+      <div class="control-group">
+        <label class="control-label" for="ditherMethod">Dithering Method</label>
+        <select id="ditherMethod" class="dither-method">
+          <option value="floydSteinberg">Floyd-Steinberg</option>
+          <option value="atkinson">Atkinson</option>
+          <option value="bayer">Bayer</option>
+          <option value="ordered">Ordered</option>
+          <option value="random">Random</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="thresholdSlider">Threshold</label>
+        <div class="slider-container">
+          <input type="range" id="thresholdSlider" class="slider" min="0" max="255" value="127">
+          <span class="slider-value" id="thresholdValue">127</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="contrastSlider">Contrast</label>
+        <div class="slider-container">
+          <input type="range" id="contrastSlider" class="slider" min="0" max="200" value="100">
+          <span class="slider-value" id="contrastValue">100%</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="brightnessSlider">Brightness</label>
+        <div class="slider-container">
+          <input type="range" id="brightnessSlider" class="slider" min="0" max="200" value="100">
+          <span class="slider-value" id="brightnessValue">100%</span>
+        </div>
+      </div>
+
+      <div class="button-container">
+        <button id="processBtn" class="btn btn-process">Process Video</button>
+        <button id="downloadBtn" class="btn btn-download" disabled>Download Dithered Video</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>&copy; 2025 Video Dithering App | All rights reserved</p>
+  </footer>
+
+  <script>
+    // DOM Elements
+    const uploadContainer = document.getElementById('uploadContainer');
+    const videoInput = document.getElementById('videoInput');
+    const processingMessage = document.getElementById('processingMessage');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const videoContainer = document.getElementById('videoContainer');
+    const originalVideo = document.getElementById('originalVideo');
+    const processedVideo = document.getElementById('processedVideo');
+    const controlsContainer = document.getElementById('controlsContainer');
+    const ditherMethod = document.getElementById('ditherMethod');
+    const thresholdSlider = document.getElementById('thresholdSlider');
+    const thresholdValue = document.getElementById('thresholdValue');
+    const contrastSlider = document.getElementById('contrastSlider');
+    const contrastValue = document.getElementById('contrastValue');
+    const brightnessSlider = document.getElementById('brightnessSlider');
+    const brightnessValue = document.getElementById('brightnessValue');
+    const processBtn = document.getElementById('processBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    // Global variables
+    let sourceVideo = null;
+    let processedVideoBlob = null;
+    let videoWidth = 640;
+    let videoHeight = 480;
+    let videoDuration = 0;
+    let framerate = 30;
+    let isProcessing = false;
+
+    // Bayer matrices for ordered dithering
+    const bayer2x2 = [
+      [0, 2],
+      [3, 1]
+    ];
+    
+    const bayer4x4 = [
+      [0, 8, 2, 10],
+      [12, 4, 14, 6],
+      [3, 11, 1, 9],
+      [15, 7, 13, 5]
+    ];
+    
+    const bayer8x8 = [
+      [0, 32, 8, 40, 2, 34, 10, 42],
+      [48, 16, 56, 24, 50, 18, 58, 26],
+      [12, 44, 4, 36, 14, 46, 6, 38],
+      [60, 28, 52, 20, 62, 30, 54, 22],
+      [3, 35, 11, 43, 1, 33, 9, 41],
+      [51, 19, 59, 27, 49, 17, 57, 25],
+      [15, 47, 7, 39, 13, 45, 5, 37],
+      [63, 31, 55, 23, 61, 29, 53, 21]
+    ];
+
+    // Event listeners
+    videoInput.addEventListener('change', handleVideoUpload);
+    thresholdSlider.addEventListener('input', updateThresholdValue);
+    contrastSlider.addEventListener('input', updateContrastValue);
+    brightnessSlider.addEventListener('input', updateBrightnessValue);
+    processBtn.addEventListener('click', processVideo);
+    downloadBtn.addEventListener('click', downloadVideo);
+
+    // Initialize values
+    updateThresholdValue();
+    updateContrastValue();
+    updateBrightnessValue();
+
+    // Functions
+    function handleVideoUpload(event) {
+      const file = event.target.files[0];
+      if (!file || !file.type.includes('video/')) {
+        alert('Please select a valid video file');
+        return;
+      }
+
+      // Create video URL
+      sourceVideo = URL.createObjectURL(file);
+      originalVideo.src = sourceVideo;
+
+      // Show video containers and controls
+      uploadContainer.classList.add('hidden');
+      videoContainer.classList.remove('hidden');
+      controlsContainer.classList.remove('hidden');
+
+      // Wait for video metadata to load
+      originalVideo.onloadedmetadata = function() {
+        videoWidth = originalVideo.videoWidth;
+        videoHeight = originalVideo.videoHeight;
+        videoDuration = originalVideo.duration;
+        
+        // Get framerate if possible
+        originalVideo.onplay = function() {
+          setTimeout(() => {
+            if (originalVideo.mozCaptureStream) {
+              const stream = originalVideo.mozCaptureStream();
+              const settings = stream.getVideoTracks()[0].getSettings();
+              if (settings.frameRate) {
+                framerate = settings.frameRate;
+              }
+            }
+          }, 100);
+        };
+        originalVideo.play();
+      };
+    }
+
+    function updateThresholdValue() {
+      thresholdValue.textContent = thresholdSlider.value;
+    }
+
+    function updateContrastValue() {
+      contrastValue.textContent = `${contrastSlider.value}%`;
+    }
+
+    function updateBrightnessValue() {
+      brightnessValue.textContent = `${brightnessSlider.value}%`;
+    }
+
+    async function processVideo() {
+      if (isProcessing || !sourceVideo) return;
+      
+      isProcessing = true;
+      processBtn.disabled = true;
+      downloadBtn.disabled = true;
+      processingMessage.style.display = 'block';
+      progressContainer.style.display = 'block';
+      
+      // Create canvas elements for processing
+      const inputCanvas = document.createElement('canvas');
+      const outputCanvas = document.createElement('canvas');
+      
+      // Set canvas dimensions to match video
+      inputCanvas.width = videoWidth;
+      inputCanvas.height = videoHeight;
+      outputCanvas.width = videoWidth;
+      outputCanvas.height = videoHeight;
+      
+      const inputCtx = inputCanvas.getContext('2d');
+      const outputCtx = outputCanvas.getContext('2d');
+      
+      // Video processing settings
+      const threshold = parseInt(thresholdSlider.value);
+      const contrast = parseInt(contrastSlider.value) / 100;
+      const brightness = parseInt(brightnessSlider.value) / 100;
+      const method = ditherMethod.value;
+      
+      // Reset video to beginning
+      originalVideo.currentTime = 0;
+      
+      // Create MediaRecorder to capture frames
+      const stream = outputCanvas.captureStream(framerate);
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'video/webm;codecs=vp9',
+        videoBitsPerSecond: 2500000
+      });
+      
+      const chunks = [];
+      mediaRecorder.ondataavailable = function(e) {
+        chunks.push(e.data);
+      };
+      
+      mediaRecorder.onstop = function() {
+        // Combine all chunks into a single blob
+        processedVideoBlob = new Blob(chunks, { type: 'video/webm' });
+        processedVideo.src = URL.createObjectURL(processedVideoBlob);
+        
+        // Enable download button
+        downloadBtn.disabled = false;
+        isProcessing = false;
+        processingMessage.style.display = 'none';
+        progressContainer.style.display = 'none';
+        processBtn.disabled = false;
+      };
+      
+      // Start recording
+      mediaRecorder.start();
+      
+      // Get total frames to process
+      const totalFrames = Math.floor(videoDuration * framerate);
+      let framesProcessed = 0;
+
+      // Start processing frames
+      await processFrame();
+      
+      // Process each frame
+      async function processFrame() {
+        if (originalVideo.currentTime >= videoDuration) {
+          // We've reached the end of the video
+          mediaRecorder.stop();
+          return;
+        }
+        
+        // Draw current frame to input canvas
+        inputCtx.drawImage(originalVideo, 0, 0, videoWidth, videoHeight);
+        
+        // Get image data for processing
+        const imageData = inputCtx.getImageData(0, 0, videoWidth, videoHeight);
+        const newImageData = new ImageData(videoWidth, videoHeight);
+        
+        // Process the frame with the selected dithering method
+        applyDithering(imageData, newImageData, method, threshold, contrast, brightness);
+        
+        // Draw processed frame to output canvas
+        outputCtx.putImageData(newImageData, 0, 0);
+        
+        // Update progress
+        framesProcessed++;
+        const progress = Math.min(100, Math.round((framesProcessed / totalFrames) * 100));
+        progressFill.style.width = `${progress}%`;
+        progressText.textContent = `Processing: ${progress}%`;
+        
+        // Move to next frame
+        originalVideo.currentTime += 1 / framerate;
+        
+        // Wait for the time update event
+        await new Promise(resolve => {
+          originalVideo.addEventListener('timeupdate', function onTimeUpdate() {
+            originalVideo.removeEventListener('timeupdate', onTimeUpdate);
+            resolve();
+          });
+        });
+        
+        // Process next frame (use setTimeout to avoid blocking the UI)
+        setTimeout(processFrame, 0);
+      }
+    }
+
+    function applyDithering(srcImageData, destImageData, method, threshold, contrast, brightness) {
+      const data = srcImageData.data;
+      const newData = destImageData.data;
+      const width = srcImageData.width;
+      const height = srcImageData.height;
+      
+      // Create a grayscale buffer to work with
+      const grayscale = new Uint8Array(width * height);
+      
+      // Convert to grayscale with applied contrast and brightness
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = (y * width + x) * 4;
+          
+          // Convert to grayscale using luminance method
+          let gray = Math.round(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
+          
+          // Apply contrast
+          gray = ((gray / 255 - 0.5) * contrast + 0.5) * 255;
+          
+          // Apply brightness
+          gray = gray * brightness;
+          
+          // Clamp values
+          gray = Math.max(0, Math.min(255, gray));
+          
+          // Store in grayscale buffer
+          grayscale[y * width + x] = gray;
+        }
+      }
+      
+      // Apply dithering based on selected method
+      switch(method) {
+        case 'floydSteinberg':
+          applyFloydSteinbergDithering(grayscale, width, height, threshold);
+          break;
+        case 'atkinson':
+          applyAtkinsonDithering(grayscale, width, height, threshold);
+          break;
+        case 'bayer':
+          applyBayerDithering(grayscale, width, height, threshold);
+          break;
+        case 'ordered':
+          applyOrderedDithering(grayscale, width, height, threshold);
+          break;
+        case 'random':
+          applyRandomDithering(grayscale, width, height, threshold);
+          break;
+        default:
+          applyThresholding(grayscale, width, height, threshold);
+      }
+      
+      // Convert dithered grayscale back to RGBA
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = (y * width + x) * 4;
+          const ditheredValue = grayscale[y * width + x] > 127 ? 255 : 0;
+          
+          newData[idx] = ditheredValue;     // R
+          newData[idx + 1] = ditheredValue; // G
+          newData[idx + 2] = ditheredValue; // B
+          newData[idx + 3] = 255;           // A (fully opaque)
+        }
+      }
+    }
+
+    function applyThresholding(grayscale, width, height, threshold) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = y * width + x;
+          grayscale[idx] = grayscale[idx] < threshold ? 0 : 255;
+        }
+      }
+    }
+
+    function applyFloydSteinbergDithering(grayscale, width, height, threshold) {
+      // Create a copy of the grayscale data to work with
+      const buffer = new Uint8Array(grayscale);
+      
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = y * width + x;
+          const oldPixel = buffer[idx];
+          const newPixel = oldPixel < threshold ? 0 : 255;
+          grayscale[idx] = newPixel;
+          
+          const error = oldPixel - newPixel;
+          
+          // Distribute error to neighboring pixels
+          if (x + 1 < width) {
+            buffer[idx + 1] += error * 7 / 16;
+          }
+          if (y + 1 < height) {
+            if (x - 1 >= 0) {
+              buffer[idx + width - 1] += error * 3 / 16;
+            }
+            buffer[idx + width] += error * 5 / 16;
+            if (x + 1 < width) {
+              buffer[idx + width + 1] += error * 1 / 16;
+            }
+          }
+        }
+      }
+    }
+
+    function applyAtkinsonDithering(grayscale, width, height, threshold) {
+      // Create a copy of the grayscale data to work with
+      const buffer = new Uint8Array(grayscale);
+      
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = y * width + x;
+          const oldPixel = buffer[idx];
+          const newPixel = oldPixel < threshold ? 0 : 255;
+          grayscale[idx] = newPixel;
+          
+          const error = Math.floor((oldPixel - newPixel) / 8);
+          
+          // Distribute error to neighboring pixels (Atkinson pattern)
+          if (x + 1 < width) buffer[idx + 1] += error;
+          if (x + 2 < width) buffer[idx + 2] += error;
+          
+          if (y + 1 < height) {
+            if (x - 1 >= 0) buffer[idx + width - 1] += error;
+            buffer[idx + width] += error;
+            if (x + 1 < width) buffer[idx + width + 1] += error;
+          }
+          
+          if (y + 2 < height) {
+            buffer[idx + width * 2] += error;
+          }
+        }
+      }
+    }
+
+    function applyBayerDithering(grayscale, width, height, threshold) {
+      // Use 4x4 Bayer matrix
+      const bayer = bayer4x4;
+      const matrixSize = bayer.length;
+      
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = y * width + x;
+          const matrixX = x % matrixSize;
+          const matrixY = y % matrixSize;
+          
+          // Get the threshold map value (normalized to 0-255)
+          const bayerValue = (bayer[matrixY][matrixX] / (matrixSize * matrixSize)) * 255;
+          
+          // Compare with adjusted threshold
+          grayscale[idx] = grayscale[idx] < bayerValue ? 0 : 255;
+        }
+      }
+    }
+
+    function applyOrderedDithering(grayscale, width, height, threshold) {
+      // Use 8x8 Bayer matrix
+      const matrix = bayer8x8;
+      const matrixSize = matrix.length;
+      
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = y * width + x;
+          const matrixX = x % matrixSize;
+          const matrixY = y % matrixSize;
+          
+          // Scale the threshold map value (0-63) to (0-255)
+          const matrixValue = (matrix[matrixY][matrixX] / (matrixSize * matrixSize - 1)) * 255;
+          
+          // Apply ordered dithering
+          grayscale[idx] = grayscale[idx] < matrixValue ? 0 : 255;
+        }
+      }
+    }
+
+    function applyRandomDithering(grayscale, width, height, threshold) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = y * width + x;
+          
+          // Add random noise (-127 to +127)
+          const noise = Math.floor(Math.random() * 255) - 127;
+          const adjustedValue = grayscale[idx] + noise;
+          
+          // Apply threshold
+          grayscale[idx] = adjustedValue < threshold ? 0 : 255;
+        }
+      }
+    }
+
+    function downloadVideo() {
+      if (!processedVideoBlob) return;
+      
+      const url = URL.createObjectURL(processedVideoBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'dithered-video.webm';
+      a.click();
+      
+      // Clean up
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
