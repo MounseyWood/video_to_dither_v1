@@ -437,6 +437,8 @@
     let videoDuration = 0;
     let framerate = 30;
     let isProcessing = false;
+    let useFrameByFrameMode = false; // Fallback for browsers with MediaRecorder issues
+    let processedFrames = []; // For storing frames in frame-by-frame mode
 
     // Bayer matrices for ordered dithering
     const bayer2x2 = [
@@ -529,17 +531,44 @@
     async function processVideo() {
       if (isProcessing || !sourceVideo) return;
       
-      // Check if MediaRecorder is supported
-      if (typeof MediaRecorder === 'undefined') {
-        alert('Your browser does not support the MediaRecorder API. Please try a different browser.');
-        return;
-      }
-      
       isProcessing = true;
       processBtn.disabled = true;
       downloadBtn.disabled = true;
       processingMessage.style.display = 'block';
       progressContainer.style.display = 'block';
+      
+      // Check for MediaRecorder support and decide processing method
+      try {
+        // Test if we can create a MediaRecorder with any supported format
+        const testCanvas = document.createElement('canvas');
+        testCanvas.width = 1;
+        testCanvas.height = 1;
+        const testStream = testCanvas.captureStream(1);
+        
+        // Try to find any supported format
+        let isMediaRecorderWorking = false;
+        const testMimeTypes = ['video/webm', 'video/mp4', ''];
+        
+        for (const mimeType of testMimeTypes) {
+          try {
+            if (mimeType === '' || MediaRecorder.isTypeSupported(mimeType)) {
+              const testRecorder = new MediaRecorder(testStream, {mimeType});
+              isMediaRecorderWorking = true;
+              break;
+            }
+          } catch (e) {
+            console.warn(`Format ${mimeType} not supported:`, e);
+          }
+        }
+        
+        if (!isMediaRecorderWorking) {
+          console.warn('MediaRecorder not working with any mime type, switching to frame-by-frame mode');
+          useFrameByFrameMode = true;
+        }
+      } catch (e) {
+        console.warn('Error testing MediaRecorder, switching to frame-by-frame mode:', e);
+        useFrameByFrameMode = true;
+      }
       
       // Create canvas elements for processing
       const inputCanvas = document.createElement('canvas');
@@ -563,63 +592,92 @@
       // Reset video to beginning
       originalVideo.currentTime = 0;
       
-      // Create MediaRecorder to capture frames
-      const stream = outputCanvas.captureStream(framerate);
+      // Clear any previously stored frames
+      processedFrames = [];
       
-      // Try different MIME types in order of preference
-      const mimeTypes = [
-        'video/webm;codecs=vp9',
-        'video/webm;codecs=vp8',
-        'video/webm',
-        'video/mp4',
-        ''  // Empty string lets browser choose
-      ];
+      let mediaRecorder = null;
+      let chunks = [];
       
-      // Find the first supported MIME type
-      let supportedMimeType = '';
-      for (const type of mimeTypes) {
-        if (type === '' || MediaRecorder.isTypeSupported(type)) {
-          supportedMimeType = type;
-          break;
+      // Only set up MediaRecorder if we're not in frame-by-frame mode
+      if (!useFrameByFrameMode) {
+        // Create MediaRecorder to capture frames
+        try {
+          const stream = outputCanvas.captureStream(framerate);
+          
+          // Try different MIME types in order of preference
+          const mimeTypes = [
+            'video/webm',
+            'video/mp4',
+            ''  // Empty string lets browser choose
+          ];
+          
+          // Find the first supported MIME type
+          let supportedMimeType = '';
+          for (const type of mimeTypes) {
+            if (type === '' || MediaRecorder.isTypeSupported(type)) {
+              supportedMimeType = type;
+              break;
+            }
+          }
+          
+          if (!supportedMimeType) {
+            throw new Error('No supported MIME types found');
+          }
+          
+          // Create MediaRecorder with supported type
+          mediaRecorder = new MediaRecorder(stream, {
+            mimeType: supportedMimeType
+          });
+          
+          chunks = [];
+        } catch (e) {
+          console.error('Error setting up MediaRecorder, switching to frame-by-frame mode:', e);
+          useFrameByFrameMode = true;
         }
       }
       
-      // Create MediaRecorder with supported type
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: supportedMimeType,
-        videoBitsPerSecond: 2500000
-      });
-      
-      const chunks = [];
-      mediaRecorder.ondataavailable = function(e) {
-        chunks.push(e.data);
-      };
-      
-      mediaRecorder.onstop = function() {
-        // Combine all chunks into a single blob
-        const blobType = supportedMimeType ? supportedMimeType.split(';')[0] : 'video/webm';
-        processedVideoBlob = new Blob(chunks, { type: blobType });
-        processedVideo.src = URL.createObjectURL(processedVideoBlob);
+      // Set up recording events if using MediaRecorder
+      if (!useFrameByFrameMode && mediaRecorder) {
+        mediaRecorder.ondataavailable = function(e) {
+          chunks.push(e.data);
+        };
         
-        // Enable download button
-        downloadBtn.disabled = false;
-        isProcessing = false;
-        processingMessage.style.display = 'none';
-        progressContainer.style.display = 'none';
-        processBtn.disabled = false;
-      };
-      
-      mediaRecorder.onerror = function(event) {
-        console.error('MediaRecorder error:', event);
-        alert('Error recording video. Your browser might not support the required features.');
-        isProcessing = false;
-        processingMessage.style.display = 'none';
-        progressContainer.style.display = 'none';
-        processBtn.disabled = false;
-      };
-      
-      // Start recording
-      mediaRecorder.start();
+        mediaRecorder.onstop = function() {
+          try {
+            // Combine all chunks into a single blob
+            const blobType = mediaRecorder.mimeType ? mediaRecorder.mimeType.split(';')[0] : 'video/webm';
+            processedVideoBlob = new Blob(chunks, { type: blobType });
+            processedVideo.src = URL.createObjectURL(processedVideoBlob);
+            
+            // Enable download button
+            downloadBtn.disabled = false;
+            isProcessing = false;
+            processingMessage.style.display = 'none';
+            progressContainer.style.display = 'none';
+            processBtn.disabled = false;
+          } catch (e) {
+            console.error('Error creating video from chunks:', e);
+            useFrameByFrameMode = true;
+            finishFrameByFrameVideo();
+          }
+        };
+        
+        mediaRecorder.onerror = function(event) {
+          console.error('MediaRecorder error:', event);
+          useFrameByFrameMode = true;
+          
+          // Continue with frame-by-frame approach
+          finishFrameByFrameVideo();
+        };
+        
+        // Start recording
+        try {
+          mediaRecorder.start();
+        } catch (e) {
+          console.error('Error starting MediaRecorder:', e);
+          useFrameByFrameMode = true;
+        }
+      }
       
       // Get total frames to process
       const totalFrames = Math.floor(videoDuration * framerate);
@@ -632,7 +690,17 @@
       async function processFrame() {
         if (originalVideo.currentTime >= videoDuration) {
           // We've reached the end of the video
-          mediaRecorder.stop();
+          if (!useFrameByFrameMode && mediaRecorder) {
+            try {
+              mediaRecorder.stop();
+            } catch (e) {
+              console.error('Error stopping MediaRecorder:', e);
+              useFrameByFrameMode = true;
+              finishFrameByFrameVideo();
+            }
+          } else {
+            finishFrameByFrameVideo();
+          }
           return;
         }
         
@@ -649,6 +717,13 @@
         // Draw processed frame to output canvas
         outputCtx.putImageData(newImageData, 0, 0);
         
+        // If in frame-by-frame mode, capture this frame
+        if (useFrameByFrameMode) {
+          // Capture the processed frame
+          const frameDataUrl = outputCanvas.toDataURL('image/jpeg', 0.8);
+          processedFrames.push(frameDataUrl);
+        }
+        
         // Update progress
         framesProcessed++;
         const progress = Math.min(100, Math.round((framesProcessed / totalFrames) * 100));
@@ -660,14 +735,81 @@
         
         // Wait for the time update event
         await new Promise(resolve => {
-          originalVideo.addEventListener('timeupdate', function onTimeUpdate() {
+          const onTimeUpdate = () => {
             originalVideo.removeEventListener('timeupdate', onTimeUpdate);
             resolve();
-          });
+          };
+          
+          originalVideo.addEventListener('timeupdate', onTimeUpdate);
+          
+          // Add a timeout in case the timeupdate event doesn't fire
+          setTimeout(() => {
+            originalVideo.removeEventListener('timeupdate', onTimeUpdate);
+            resolve();
+          }, 1000);
         });
         
         // Process next frame (use setTimeout to avoid blocking the UI)
         setTimeout(processFrame, 0);
+      }
+      
+      // Function to handle frame-by-frame mode completion
+      function finishFrameByFrameVideo() {
+        if (processedFrames.length === 0) {
+          alert('Error processing video. No frames were generated.');
+          isProcessing = false;
+          processingMessage.style.display = 'none';
+          progressContainer.style.display = 'none';
+          processBtn.disabled = false;
+          return;
+        }
+        
+        // Create a video from captured frames
+        const framePlayer = document.createElement('video');
+        framePlayer.width = videoWidth;
+        framePlayer.height = videoHeight;
+        framePlayer.controls = true;
+        
+        // Create a simple player to show frames sequentially
+        let currentFrameIndex = 0;
+        
+        // Set up first frame as poster
+        processedVideo.poster = processedFrames[0];
+        
+        // Create video data (just metadata + first frame for now)
+        processedVideo.src = processedFrames[0];
+        
+        // Enable frame-by-frame playback controls
+        processedVideo.addEventListener('play', function() {
+          if (!isProcessing) {
+            playFrames();
+          }
+        });
+        
+        function playFrames() {
+          currentFrameIndex = 0;
+          const frameInterval = 1000 / framerate;
+          
+          function showNextFrame() {
+            if (processedVideo.paused || processedVideo.ended) {
+              return;
+            }
+            
+            currentFrameIndex = (currentFrameIndex + 1) % processedFrames.length;
+            processedVideo.poster = processedFrames[currentFrameIndex];
+            
+            setTimeout(showNextFrame, frameInterval);
+          }
+          
+          showNextFrame();
+        }
+        
+        // Enable download button
+        downloadBtn.disabled = false;
+        isProcessing = false;
+        processingMessage.style.display = 'none';
+        progressContainer.style.display = 'none';
+        processBtn.disabled = false;
       }
     }
 
@@ -862,22 +1004,39 @@
     }
 
     function downloadVideo() {
-      if (!processedVideoBlob) return;
-      
-      // Determine appropriate extension based on blob type
-      let fileExtension = 'webm';
-      if (processedVideoBlob.type.includes('mp4')) {
-        fileExtension = 'mp4';
+      if (useFrameByFrameMode && processedFrames.length > 0) {
+        // For frame-by-frame mode, we'll create a ZIP file with all frames
+        downloadFramesAsZip();
+      } else if (processedVideoBlob) {
+        // Normal mode with MediaRecorder blob
+        // Determine appropriate extension based on blob type
+        let fileExtension = 'webm';
+        if (processedVideoBlob.type.includes('mp4')) {
+          fileExtension = 'mp4';
+        }
+        
+        const url = URL.createObjectURL(processedVideoBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `dithered-video.${fileExtension}`;
+        a.click();
+        
+        // Clean up
+        URL.revokeObjectURL(url);
       }
-      
-      const url = URL.createObjectURL(processedVideoBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `dithered-video.${fileExtension}`;
-      a.click();
-      
-      // Clean up
-      URL.revokeObjectURL(url);
+    }
+    
+    function downloadFramesAsZip() {
+      // If we're in frame-by-frame mode, download the first frame
+      // This is a fallback since we can't create a ZIP file without additional libraries
+      if (processedFrames.length > 0) {
+        const a = document.createElement('a');
+        a.href = processedFrames[0];
+        a.download = 'dithered-frame-0.jpg';
+        a.click();
+        
+        alert('Your browser does not support video recording. Only the first frame has been downloaded. For a complete video, please try a different browser.');
+      }
     }
   </script>
 </body>
